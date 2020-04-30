@@ -1,13 +1,22 @@
 const electron = require("electron");
 const uuid = require("uuid").v4;
+const fs = require('fs');
 const {app,BrowserWindow, Menu, ipcMain} = electron;
 
 let todayWindow;
 let createWindow;
 let listWindow;
 let aboutWindow;
+let suhuWindow;
 
 let allAppointment = [];
+
+fs.readFile("db.json", (err, jsonAppointment) => {
+    if(!err){
+        const oldAppointment = JSON.parse(jsonAppointment);
+        allAppointment = oldAppointment;
+    }
+});
 
 app.on("ready", ()=>{
     todayWindow = new BrowserWindow({
@@ -19,6 +28,9 @@ app.on("ready", ()=>{
 
     todayWindow.loadURL(`file://${__dirname}/today.html`);
     todayWindow.on("closed", ()=>{
+
+        const jsonAppointment = JSON.stringify(allAppointment);
+        fs.writeFileSync("db.json", jsonAppointment);
 
         app.quit();
         todayWindow = null;
@@ -69,11 +81,25 @@ const aboutWindowCreator = () =>{
     aboutWindow.on("closed", ()=>(aboutWindow = null));
 };
 
+const suhuWindowCreator = () =>{
+    suhuWindow = new BrowserWindow({
+        webPreferences: {
+            nodeIntegration: true
+        },
+        width : 600,
+        height : 400,
+        title:"Temperatur Suhu"
+    });
+    suhuWindow.setMenu(null);
+    suhuWindow.loadURL(`file://${__dirname}/suhu.html`);
+    suhuWindow.on("closed", ()=>(aboutWindow = null));
+};
+
 ipcMain.on("appointment:create",(event,appointment)=>{
     appointment["id"] = uuid();
     appointment["done"] = 0;
     allAppointment.push(appointment);
-
+    sendTodayAppointments();
     createWindow.close();
     console.log(allAppointment);
 });
@@ -83,12 +109,24 @@ ipcMain.on("appointment:request:list", event=> {
 });
 
 ipcMain.on("appointment:request:today", event=> {
+    sendTodayAppointments();
     console.log("here2");
 });
 
 ipcMain.on("appointments:done", (event, id) => {
-    console.log("here3");
+    allAppointment.forEach((appointment) =>{
+        appointment.done = 1
+    })
+    sendTodayAppointments()
 });
+
+const sendTodayAppointments = () =>{
+    const today = new Date().toISOString().slice(0, 10);
+    const filtered = allAppointment.filter(
+        appointment => appointment.date === today
+    );
+    todayWindow.webContents.send("appointment:response:today",filtered);
+};
 
 const menuTemplate = [{
             label : "File",
@@ -121,6 +159,12 @@ const menuTemplate = [{
         label: "About",
         click(){
             aboutWindowCreator();
+        }
+    },
+    {
+        label: "Suhu",
+        click(){
+            suhuWindowCreator();
         }
     }
 
